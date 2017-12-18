@@ -10,6 +10,7 @@ ui_path = "%s/import_with_reference_part_select.ui" % macro_path
 class SimpleCopy:
   def __init__(self, obj, originalPart, location):
     obj.addProperty("App::PropertyFile", "location").location = location
+    obj.addProperty("App::PropertyString", "originalPartName").originalPartName = originalPart.Name
     obj.ViewObject.Proxy = 0
     obj.Shape = originalPart.Shape
     obj.Label = originalPart.Label
