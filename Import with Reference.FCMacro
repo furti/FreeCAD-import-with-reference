@@ -8,9 +8,10 @@ macro_path = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Macro").GetStr
 ui_path = "%s/import_with_reference_part_select.ui" % macro_path
 
 class SimpleCopy:
-  def __init__(self, obj, originalPart, location):
+  def __init__(self, obj, originalPart, location, locationRelative):
     obj.addProperty("App::PropertyFile", "location").location = location
     obj.addProperty("App::PropertyString", "originalPartName").originalPartName = originalPart.Name
+    obj.addProperty("App::PropertyBool", "locationRelative").locationRelative = locationRelative
     obj.ViewObject.Proxy = 0
     obj.Shape = originalPart.Shape
     obj.Label = originalPart.Label
@@ -26,6 +27,7 @@ class PartSelectPanel:
     self.actual_document = actual_document
     self.close_import_document = close_import_document
     self.form = FreeCADGui.PySideUic.loadUi(ui_path)
+    self.form.ImportRelative.setChecked(True)
     
     for part in parts:
      self.form.PartsBox.addItem(part.ViewObject.Icon, part.Label)
@@ -33,14 +35,22 @@ class PartSelectPanel:
   def accept(self):
     selectedPart = [part for part in self.parts if part.Label == self.form.PartsBox.currentText()][0]#
     atOrigin = self.form.AtOrigin.isChecked()
+    importRelative = self.form.ImportRelative.isChecked()
     FreeCADGui.Control.closeDialog()
-    importPart(self.import_document, self.actual_document, selectedPart, atOrigin, self.close_import_document)
+    importPart(self.import_document, self.actual_document, selectedPart, atOrigin, importRelative, self.close_import_document)
 # close document when needed if dialog gets closed.
 
-def importPart(import_document, actual_doc, part, atOrigin, close_import_document):
+def importPart(import_document, actual_doc, part, atOrigin, importRelative, close_import_document):
   # Create a simple copy and add it to the active document
   obj = actual_doc.addObject('Part::FeaturePython', part.Name)
-  SimpleCopy(obj, part, import_document.FileName)
+
+  if importRelative:
+    commonprefix = os.path.commonprefix([actual_doc.FileName, import_document.FileName])
+    location = os.path.relpath(import_document.FileName, commonprefix)
+  else:
+   location = import_document.FileName
+
+  SimpleCopy(obj, part, location, importRelative)
 
   if atOrigin:
     obj.Placement.Base = FreeCAD.Vector(0, 0, 0)
