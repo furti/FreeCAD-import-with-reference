@@ -1,0 +1,89 @@
+# -*- coding: utf-8 -*-
+
+import FreeCAD
+import os
+from PySide import QtGui
+
+macro_path = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Macro").GetString("MacroPath")
+ui_path = "%s/import_with_reference_part_select.ui" % macro_path
+
+class SimpleCopy:
+  def __init__(self, obj, originalPart, location):
+    obj.addProperty("App::PropertyFile", "location").location = location
+    obj.ViewObject.Proxy = 0
+    obj.Shape = originalPart.Shape
+    obj.Label = originalPart.Label
+    obj.ViewObject.ShapeColor = originalPart.ViewObject.ShapeColor
+    obj.ViewObject.LineColor = originalPart.ViewObject.LineColor
+    obj.ViewObject.PointColor = originalPart.ViewObject.PointColor
+    obj.ViewObject.DiffuseColor = originalPart.ViewObject.DiffuseColor
+
+class PartSelectPanel:
+  def __init__(self, parts, import_document, actual_document, close_import_document):
+    self.parts = parts
+    self.import_document = import_document
+    self.actual_document = actual_document
+    self.close_import_document = close_import_document
+    self.form = FreeCADGui.PySideUic.loadUi(ui_path)
+    
+    for part in parts:
+     self.form.PartsBox.addItem(part.ViewObject.Icon, part.Label)
+
+  def accept(self):
+    selectedPart = [part for part in self.parts if part.Label == self.form.PartsBox.currentText()][0]#
+    atOrigin = self.form.AtOrigin.isChecked()
+    FreeCADGui.Control.closeDialog()
+    importPart(self.import_document, self.actual_document, selectedPart, atOrigin, self.close_import_document)
+# close document when needed if dialog gets closed.
+
+def importPart(import_document, actual_doc, part, atOrigin, close_import_document):
+  # Create a simple copy and add it to the active document
+  obj = actual_doc.addObject('Part::FeaturePython', part.Name)
+  SimpleCopy(obj, part, import_document.FileName)
+
+  if atOrigin:
+    obj.Placement.Base = FreeCAD.Vector(0, 0, 0)
+
+  if close_import_document:
+    FreeCAD.closeDocument(import_document.Name)
+    FreeCAD.setActiveDocument(actual_doc.Name)
+    FreeCAD.ActiveDocument = actual_doc
+
+  actual_doc.recompute()
+
+def selectPart(fileName):
+ FreeCAD.Console.PrintMessage("importing part from %s\n" % (fileName))
+ actual_document = FreeCAD.ActiveDocument
+
+ documentAlreadyOpen = fileName in [d.FileName for d in FreeCAD.listDocuments().values()]
+
+ if documentAlreadyOpen:
+  doc = [d for d in FreeCAD.listDocuments().values() if d.FileName == fileName][0];
+  FreeCAD.Console.PrintMessage("Using already open document %s\n" % doc.Name)
+ else:
+  FreeCAD.Console.PrintMessage("Opening file %s to import part\n" % fileName)
+  doc = FreeCAD.openDocument(fileName)
+
+ # Get all visible parts and bodys from the document
+ visibleObjects = [o for o in doc.findObjects() if o.ViewObject.Visibility and o.TypeId in ("PartDesign::Body" , "App::Part")]
+
+ if len(visibleObjects) == 0:
+  QtGui.QMessageBox.information(  QtGui.qApp.activeWindow(), "Import Error", "There where no visible parts or bodies in the selected file.")
+ else:
+  FreeCAD.Console.PrintMessage("Found %d visible objects\n" %len(visibleObjects))
+  panel = PartSelectPanel(visibleObjects, doc, actual_document, not documentAlreadyOpen)
+  FreeCADGui.Control.showDialog(panel)
+
+
+dialog = QtGui.QFileDialog(
+ QtGui.qApp.activeWindow(),
+ "Select the FreeCAD document you want to import"
+)
+
+dialog.setFileMode(QtGui.QFileDialog.ExistingFile)
+dialog.setNameFilter("FreeCAD Files (*.FCStd)")
+
+if dialog.exec_():
+ selectPart(dialog.selectedFiles()[0])
+else:
+ FreeCAD.Console.PrintMessage("No File selected. Cancelling operation.")
