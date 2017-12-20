@@ -38,7 +38,12 @@ class PartSelectPanel:
     importRelative = self.form.ImportRelative.isChecked()
     FreeCADGui.Control.closeDialog()
     importPart(self.import_document, self.actual_document, selectedPart, atOrigin, importRelative, self.close_import_document)
-# close document when needed if dialog gets closed.
+
+  def reject(self):
+    FreeCADGui.Control.closeDialog()
+
+    if self.close_import_document:
+       closeDocument(self.import_document, self.actual_document)
 
 def openDocumentWhenNeeded(fileName):
   documentAlreadyOpen = fileName in [d.FileName for d in FreeCAD.listDocuments().values()]
@@ -51,6 +56,11 @@ def openDocumentWhenNeeded(fileName):
    doc = FreeCAD.openDocument(fileName)
 
   return documentAlreadyOpen, doc
+
+def closeDocument(import_document, actual_doc):
+  FreeCAD.closeDocument(import_document.Name)
+  FreeCAD.setActiveDocument(actual_doc.Name)
+  FreeCAD.ActiveDocument = actual_doc
 
 def importPart(import_document, actual_doc, part, atOrigin, importRelative, close_import_document, object_to_replace=None):
   # Create a simple copy and add it to the active document
@@ -72,9 +82,7 @@ def importPart(import_document, actual_doc, part, atOrigin, importRelative, clos
    obj.Label = part.Label
 
   if close_import_document:
-    FreeCAD.closeDocument(import_document.Name)
-    FreeCAD.setActiveDocument(actual_doc.Name)
-    FreeCAD.ActiveDocument = actual_doc
+    closeDocument(import_document, actual_document)
 
   actual_doc.recompute()
 
