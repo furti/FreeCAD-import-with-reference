@@ -40,7 +40,19 @@ class PartSelectPanel:
     importPart(self.import_document, self.actual_document, selectedPart, atOrigin, importRelative, self.close_import_document)
 # close document when needed if dialog gets closed.
 
-def importPart(import_document, actual_doc, part, atOrigin, importRelative, close_import_document):
+def openDocumentWhenNeeded(fileName):
+  documentAlreadyOpen = fileName in [d.FileName for d in FreeCAD.listDocuments().values()]
+
+  if documentAlreadyOpen:
+   doc = [d for d in FreeCAD.listDocuments().values() if d.FileName == fileName][0];
+   FreeCAD.Console.PrintMessage("Using already open document %s\n" % doc.Name)
+  else:
+   FreeCAD.Console.PrintMessage("Opening file %s to import part\n" % fileName)
+   doc = FreeCAD.openDocument(fileName)
+
+  return documentAlreadyOpen, doc
+
+def importPart(import_document, actual_doc, part, atOrigin, importRelative, close_import_document, object_to_replace=None):
   # Create a simple copy and add it to the active document
   obj = actual_doc.addObject('Part::FeaturePython', part.Name)
 
@@ -54,6 +66,10 @@ def importPart(import_document, actual_doc, part, atOrigin, importRelative, clos
 
   if atOrigin:
     obj.Placement.Base = FreeCAD.Vector(0, 0, 0)
+  elif object_to_replace is not None:
+   obj.Placement = object_to_replace.Placement
+   actual_doc.removeObject(object_to_replace.Name)
+   obj.Label = part.Label
 
   if close_import_document:
     FreeCAD.closeDocument(import_document.Name)
@@ -66,14 +82,7 @@ def selectPart(fileName):
  FreeCAD.Console.PrintMessage("importing part from %s\n" % (fileName))
  actual_document = FreeCAD.ActiveDocument
 
- documentAlreadyOpen = fileName in [d.FileName for d in FreeCAD.listDocuments().values()]
-
- if documentAlreadyOpen:
-  doc = [d for d in FreeCAD.listDocuments().values() if d.FileName == fileName][0];
-  FreeCAD.Console.PrintMessage("Using already open document %s\n" % doc.Name)
- else:
-  FreeCAD.Console.PrintMessage("Opening file %s to import part\n" % fileName)
-  doc = FreeCAD.openDocument(fileName)
+ documentAlreadyOpen, doc = openDocumentWhenNeeded(fileName)
 
  # Get all visible parts and bodys from the document
  visibleObjects = [o for o in doc.findObjects() if o.ViewObject.Visibility and o.TypeId in ("PartDesign::Body" , "App::Part")]
@@ -85,16 +94,50 @@ def selectPart(fileName):
   panel = PartSelectPanel(visibleObjects, doc, actual_document, not documentAlreadyOpen)
   FreeCADGui.Control.showDialog(panel)
 
+def refreshPart(part):
+  FreeCAD.Console.PrintMessage("Refreshing part '%s'\n" % part.Label)
+  location = part.location
+  actual_document = FreeCAD.ActiveDocument
 
-dialog = QtGui.QFileDialog(
- QtGui.qApp.activeWindow(),
- "Select the FreeCAD document you want to import"
-)
+  if part.locationRelative:
+   directory = os.path.dirname(actual_document.FileName)
+   location = os.path.join(directory, location).replace('\\', '/')
 
-dialog.setFileMode(QtGui.QFileDialog.ExistingFile)
-dialog.setNameFilter("FreeCAD Files (*.FCStd)")
+  FreeCAD.Console.PrintMessage("importing from location '%s'\n" % location)
 
-if dialog.exec_():
- selectPart(dialog.selectedFiles()[0])
+  documentAlreadyOpen, doc = openDocumentWhenNeeded(location)
+  import_part = doc.getObject(part.originalPartName)
+  importPart(doc, actual_document, import_part, False, part.locationRelative, not documentAlreadyOpen, part)
+
+# At first we check if something is selected. If so perform a refresh instead of an import
+selection = FreeCADGui.Selection.getSelection(FreeCAD.ActiveDocument.Name)
+
+if len(selection) > 0:
+  # Perform refresh 
+  partnamesWithoutLocation = []
+
+  for p in selection:
+    try:
+      p.getPropertyByName("location")
+    except AttributeError:
+      partnamesWithoutLocation.append(p.Label)
+
+  if len(partnamesWithoutLocation) > 0:
+   QtGui.QMessageBox.information(  QtGui.qApp.activeWindow(), "Selection Error", "The following selected Objects have no location property set %s. Maybe you selected something that was not imported before?" % partnamesWithoutLocation)
+  else:
+   for p in selection:
+      refreshPart(p)
 else:
- FreeCAD.Console.PrintMessage("No File selected. Cancelling operation.")
+  # Perform import
+  dialog = QtGui.QFileDialog(
+   QtGui.qApp.activeWindow(),
+   "Select the FreeCAD document you want to import"
+  )
+  
+  dialog.setFileMode(QtGui.QFileDialog.ExistingFile)
+  dialog.setNameFilter("FreeCAD Files (*.FCStd)")
+  
+  if dialog.exec_():
+   selectPart(dialog.selectedFiles()[0])
+  else:
+   FreeCAD.Console.PrintMessage("No File selected. Cancelling operation.")
