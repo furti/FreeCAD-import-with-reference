@@ -17,3 +17,6 @@ A dialog will be shown in the Task panel.
 ## Reloading objects
 
 To reload a object simply select it in the tree view and execute the macro. If the object was currently imported by this macro it will be updated. The newly imported object will be placed at the same location as the previous one. The old object will be removed after the new one is ready.
+
+## License
+The macro is available under the MIT License.
